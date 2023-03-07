@@ -61,3 +61,8 @@ def upload(smb_url, smb_port, smb_account, smb_password, local_file_names, local
         print(e)
         smb.close()
         raise e
+
+
+if __name__ == '__main__':
+    upload("192.168.1.141", 445, "李耀华", "wenli319", ["hello.xlsx"], "/Users/zhiou/Desktop", "IT",
+             "/EYA2.0开发工具/eya-dev-插件/张三")
