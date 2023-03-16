@@ -139,13 +139,13 @@ url = 'https://internal-api.zielsmart.com/v2/rpa/platform/amazon/buybox/sync/amz
 token = '3a0d9caaadb1425bb56672ba56a5c289'
 
 def post(push_data):
-    print(json.dumps(push_data,ensure_ascii=False))
+    print(json.dumps(push_data, ensure_ascii=False))
     response = requests.post(url=url,
                              headers={'Content-Type': 'application/json;charset=utf-8', 'X-AUTHORIZATION-TOKEN': token},
                              json=push_data)
     print("推送结果:" + response.text)
 if __name__ == "__main__":
-    # logg("got:" + sys.argv[1])
-    run("/Users/zhiou/Desktop/Amazon.-all-2023-03-16 1230.xlsx")
+    #logg("got:" + sys.argv[1])
+    run("/Users/zhiou/Desktop/Amazon-US-20230316 1501.xlsx")
     # print(run(r"C:\Users\user\Documents\UiPath\EU_Amz_status_update\data\Amazon.-all-2022-09-29 1301.xlsx"))
     # print(run("/Users/yanghui/Documents/code/python/bda_lin_application/RPA/Amazon-US-20220926 1548.xlsx"))
