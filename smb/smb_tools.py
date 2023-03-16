@@ -61,3 +61,6 @@ def upload(smb_url, smb_port, smb_account, smb_password, local_file_names, local
         print(e)
         smb.close()
         raise e
+
+if __name__ == '__main__':
+    upload("192.168.1.42",16445,"王豪","123456","test.xlsx","/Users/zhiou/Desktop","产品运营","\运营组\VC 组内共享");
