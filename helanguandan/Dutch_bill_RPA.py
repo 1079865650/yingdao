@@ -10,6 +10,8 @@ import json
 import os
 import re
 import sys
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 
 # from redis_util import *
 import imap_tools.message
@@ -28,25 +30,33 @@ def filter_message(attachment, send: str, file_code: str):
         for a in attachment:  # <class "imap_tools.message.MailAttachment">
             if ("Duty" in a.filename) or ("Clearance" in a.filename):
                 att_data = a.payload
-                f = open(pdf_storage_location + "\\" + send + "\\" + date_time + "\\" + file_code + "\\" + a.filename, "wb")
+                filename = a.filename.replace("\r\n", '')
+                pdf_path = os.path.join(file_path, filename)
+                f = open(pdf_path, "wb")
+                # f = open(pdf_storage_location + "\\" + send + "\\" + date_time + "\\" + file_code + "\\" + a.filename, "wb")
                 result = f.write(att_data)
                 f.close()
                 break
         return file_path
     elif send == "DGF":
         file_path = pdf_storage_location + "\\" + send + "\\" + date_time + "\\" + file_code
-        if not os.path.exists(file_path):  # 判断文件是否存在
-            os.makedirs(file_path)
         if len(attachment) == 1:
+            if not os.path.exists(file_path):  # 判断文件是否存在
+                os.makedirs(file_path)
             a = attachment[0]
             att_data = a.payload
-            f = open(pdf_storage_location + "\\" + send + "\\" + date_time + "\\" + file_code + "\\" + a.filename, "wb")
+            filename = a.filename.replace("\r\n", '')
+            pdf_path = os.path.join(file_path, filename)
+            f = open(pdf_path, "wb")
+            # f = open(pdf_storage_location + "\\" + send + "\\" + date_time + "\\" + file_code + "\\" + a.filename, "wb")
             result = f.write(att_data)
             f.close()
             return file_path
 
 
 def list_dict_list(list_dict: list):
+    if len(list_dict) == 0:
+        return []
     list_value = []
     for item in list_dict:
         key = list(item.keys())[0]
@@ -97,7 +107,7 @@ def parse_file_code(string_value, uid: str):
         return c
 
 
-def traverse_folder(date_time):  # 遍历文件夹 拿到所有附件  参数如果传值 就不再是默认值
+def traverse_folder(date_time=""):  # 遍历文件夹 拿到所有附件  参数如果传值 就不再是默认值
     if date_time == "":
         # file_path = r"F:\Users\DeskTop\Dutch\*" + "\\" + datetime.datetime.now().strftime("%Y-%m-%d") + "\\*"
         file_path = pdf_storage_location + r"\*\\" + datetime.datetime.now().strftime("%Y-%m-%d") + "\\*"
@@ -287,7 +297,9 @@ def parse_pdf_bill(pdf_json, bill_json, filename):  # folder\filer user filer pa
     return pdf_bill_json
 
 
-def start(start_time=datetime.datetime.now().strftime("%Y-%m-%d")):
+def start(start_time=""):
+    if start_time == "":
+        start_time = datetime.datetime.now().strftime("%Y-%m-%d")
     mail_pass = fs_mail_pass
     with MailBox(fs_host).login(fs_username, mail_pass, initial_folder="INBOX") as mailbox:
         a = str(start_time).split('-')
@@ -322,6 +334,7 @@ def start(start_time=datetime.datetime.now().strftime("%Y-%m-%d")):
                         continue
                     item = {"DGF": uid}
                     uid_list.append(item)
+        print("=========uid_list", uid_list)
         return uid_list
 
 
@@ -380,19 +393,25 @@ def parse_pdf_bill_findings(uid_list, date_time=""):
         container_number = pdf_json["data"]["containerNummber"]  # 集装箱号
         print('hbl=order_code, number=container_number', order_code, container_number)
         res_bill = number_bill_request(hbl=order_code, number=container_number)  # 发送请求 返回bill数据
-        if res_bill is None:
-            item = {"problem_bill_request": email_uid}  # 提单号请求失败
-            problem_uid.append(item)
-            continue
-        if "data" not in res_bill.json():
-            item = {"problem_bill_request": email_uid}  # 提单号请求失败
-            problem_uid.append(item)
-            continue
-        bill_json = res_bill.json()["data"]
-        if "containerNumber" not in bill_json[0]:  # 判断是否拿到订单的详情数据
+        try:
+            if res_bill is None:
+                item = {"problem_bill_request": email_uid}  # 提单号请求失败
+                problem_uid.append(item)
+                continue
+            if "data" not in res_bill.json():
+                item = {"problem_bill_request": email_uid}  # 提单号请求失败
+                problem_uid.append(item)
+                continue
+            bill_json = res_bill.json()["data"]
+            if "containerNumber" not in bill_json[0]:  # 判断是否拿到订单的详情数据
+                item = {"problem_bill_request": email_uid}  # 提单号 请求失败
+                problem_uid.append(item)
+                continue
+        except:
             item = {"problem_bill_request": email_uid}  # 提单号 请求失败
             problem_uid.append(item)
             continue
+
         # 数据都没问题 提取数据
         try:
             a = parse_pdf_bill(pdf_json=pdf_json['data'], bill_json=bill_json,
@@ -452,7 +471,10 @@ def process_correct_message(uid_list):
                     print("error of list query data:" + str(ValueError) + " and uid:" + uid_item[file_name])
                     continue
                 processed_uid.append(uid)
-                mailbox.move(mailbox.uids()[mail_index], file_name)
+                mail_file = 'DHL 荷兰关单'
+                if file_name == 'OFR':
+                    mail_file = 'DHL 荷兰关单'
+                mailbox.move(mailbox.uids()[mail_index], mail_file)
         print("ID of all messages moved:", processed_uid)
         return processed_uid
 
@@ -462,6 +484,21 @@ import smtplib
 from email.mime.text import MIMEText
 # 构建邮件头
 from email.header import Header
+
+
+def excel_fullpath(date_time=""):
+    if date_time == "":
+        date_time = datetime.datetime.now().strftime("%Y-%m-%d")
+    g = os.walk(excel_storage_location + '\\' + date_time)
+    excel_fullname = dict()
+    for path, dir_list, file_list in g:
+        for file in file_list:
+            fullname = os.path.join(path, file)
+            uid = re.findall(r'(?<=_)\d+(?=\.)', file)[0]
+            excel_fullname[uid] = fullname
+    return excel_fullname
+
+
 def send_email_by_judge(uid_list, problem_uid, bedrag_list_all):
     date_time = datetime.datetime.now().strftime("%Y-%m-%d")
     mail_pass = fs_mail_pass
@@ -487,6 +524,8 @@ def send_email_by_judge(uid_list, problem_uid, bedrag_list_all):
             bedrag = bedrag_list_all[uid]
             try:
                 to_addr = fs_to_addr_true
+                to_addr_all = to_addr.split(',')
+                # to_addr2 = fs_to_addr_true2
                 # subject = uid_subject_list[uid]
                 subject = (date_time+'的核对正常的关单明细')
                 content = uid_subject_dict[uid] + '\t'*3 + "核对正常,关税为:" + str(bedrag)
@@ -500,7 +539,8 @@ def send_email_by_judge(uid_list, problem_uid, bedrag_list_all):
                 # 登录--发送者账号和口令
                 smtpobj.login(from_addr, password)
                 # 发送邮件
-                smtpobj.sendmail(from_addr, to_addr, msg.as_string())
+                for addr in to_addr_all:
+                    smtpobj.sendmail(from_addr, addr, msg.as_string())
                 sending_succeeded_uid.append(uid)
                 print("邮件发送成功")
             except smtplib.SMTPException:
@@ -511,20 +551,62 @@ def send_email_by_judge(uid_list, problem_uid, bedrag_list_all):
                 # smtpobj.quit()
 
         # 处理错误的邮件
+        excel_fullpath_all = excel_fullpath()
         for left in problem_uid:
             key = list(left.keys())[0]
             uid = str(left[key])
+            try:
+                attach_path = excel_fullpath_all[uid]
+            except Exception:
+                try:
+                    # to_addr = '2983003951@qq.com'
+                    # subject = uid_subject_list[uid]
+                    subject = (date_time + '的核对异常的关单明细')
+                    content = uid_subject_dict[uid] + '\t' * 3 + "核对异常,请人工核查"
+
+                    # msg = MIMEText(content, 'plain', 'utf-8')
+                    msg = MIMEMultipart()
+                    msg['From'] = Header('PRA核对')  # 发送者
+                    msg['Subject'] = Header(subject, 'utf-8')  # 邮件主题
+                    msg.attach(MIMEText(content, 'plain', 'utf-8'))
+                    # xlsxpart = MIMEApplication(open(attach_path, 'rb').read())
+                    # xlsxpart.add_header('Content-Disposition', 'attachment', filename=filename)
+                    # msg.attach(xlsxpart)
+                    smtpobj = smtplib.SMTP_SSL(smtp_server)
+                    # 建立连接
+                    smtpobj.connect(smtp_server, 465)
+                    # 登录--发送者账号和口令
+                    smtpobj.login(from_addr, password)
+                    # 发送邮件
+                    smtpobj.sendmail(from_addr, fs_to_addr, msg.as_string())
+                    sending_succeeded_uid.append(uid)
+                    continue
+                    print("邮件发送成功")
+                except smtplib.SMTPException:
+                    continue
+                    print("无法发送邮件")
+                finally:
+                    # 关闭服务器
+                    # smtpobj.quit()
+                    pass
+
+            filename = attach_path.split("\\")[-1]
             try:
                 # to_addr = '2983003951@qq.com'
                 # subject = uid_subject_list[uid]
                 subject = (date_time+'的核对异常的关单明细')
                 content = uid_subject_dict[uid] + '\t'*3 + "核对异常,请人工核查"
 
-                msg = MIMEText(content, 'plain', 'utf-8')
+                # msg = MIMEText(content, 'plain', 'utf-8')
+                msg = MIMEMultipart()
                 msg['From'] = Header('PRA核对')  # 发送者
                 msg['Subject'] = Header(subject, 'utf-8')  # 邮件主题
+                msg.attach(MIMEText(content, 'plain', 'utf-8'))
+                xlsxpart = MIMEApplication(open(attach_path, 'rb').read())
+                xlsxpart.add_header('Content-Disposition', 'attachment', filename=filename)
+                msg.attach(xlsxpart)
                 smtpobj = smtplib.SMTP_SSL(smtp_server)
-                # 建立连接--qq邮箱服务和端口号（可百度查询）
+                # 建立连接
                 smtpobj.connect(smtp_server, 465)
                 # 登录--发送者账号和口令
                 smtpobj.login(from_addr, password)
@@ -593,24 +675,39 @@ def classify_files(validity: list, invalidity: list):
             continue
         if not os.path.exists(new_file_path_previous):
             os.makedirs(new_file_path_previous)
-        if os.path.isdir(cur_path):  # is folder return true   is file return false  cur_path will not destroy the original folder  dir cut the previous folder directly
-            if not os.path.exists(new_file_path):
-                os.mkdir(new_file_path)
-        else:
-            # with open(cur_path, 'rb') as f:
-            #     data = f.read()
-            #     os.remove(cur_path)
-            #     # f.close()
-            # with open(new_file_path, 'wb') as d:  # if not a file will be created if any it will cover the content
-            #     d.write(data)
-            if os.path.exists(new_file_path):
-                os.remove(new_file_path)
-            os.rename(cur_path, new_file_path)
+        # if os.path.isdir(cur_path):  # is folder return true   is file return false  cur_path will not destroy the original folder  dir cut the previous folder directly
+        #     if not os.path.exists(new_file_path):
+        #         os.mkdir(new_file_path)
+
+        # with open(cur_path, 'rb') as f:
+        #     data = f.read()
+        #     os.remove(cur_path)
+        #     # f.close()
+        # with open(new_file_path, 'wb') as d:  # if not a file will be created if any it will cover the content
+        #     d.write(data)
+        if os.path.exists(new_file_path):
+            os.remove(new_file_path)
+        os.rename(cur_path, new_file_path)
 
 
-def absolute_path_pdf(time_date=datetime.datetime.now().strftime('%Y-%m-%d')):
+def absolute_path_pdf(time_date="", uid_list=[], problem_uid=[]):  # return file of pdf
+    if time_date == "":
+        time_date = datetime.datetime.now().strftime("%Y-%m-%d")
+    print("=========absolute_path_pdf time_date", time_date)
     a = traverse_folder(time_date)
+    a_path_list = []
+    if len(uid_list) != 0 or len(problem_uid) != 0:
+        u_list = list_dict_list(uid_list)
+        p_uid = list_dict_list(problem_uid)
+        all_uid = u_list + p_uid
+        for key in a.keys():
+            key_split = key.split("_")[-1]
+            if key_split not in all_uid:
+                a_path_list.append(key)
+    for path in a_path_list:
+        a.pop(path)
     absolute_path = []
+    print("=========absolute_path_pdf a", a)
     for i in a.keys():
         path = str(a[i][0])
         ch_index = path.rfind("\\")
