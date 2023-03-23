@@ -16,7 +16,7 @@ import imap_tools.message
 import requests
 from imap_tools import MailBox, AND, OR, NOT
 import redis
-from .settings import *
+from .荷兰关单RPA_settings import *
 
 
 def filter_message(attachment, send: str, file_code: str):
@@ -44,6 +44,15 @@ def filter_message(attachment, send: str, file_code: str):
             result = f.write(att_data)
             f.close()
             return file_path
+
+
+def list_dict_list(list_dict: list):
+    list_value = []
+    for item in list_dict:
+        key = list(item.keys())[0]
+        value = item[key]
+        list_value.append(value)
+    return list_value
 
 
 def add(rd_key, rd_value, expired: int):
@@ -278,7 +287,7 @@ def parse_pdf_bill(pdf_json, bill_json, filename):  # folder\filer user filer pa
     return pdf_bill_json
 
 
-def start(start_time=datetime.datetime.now().strftime("%Y-%m_%d")):
+def start(start_time=datetime.datetime.now().strftime("%Y-%m-%d")):
     mail_pass = fs_mail_pass
     with MailBox(fs_host).login(fs_username, mail_pass, initial_folder="INBOX") as mailbox:
         a = str(start_time).split('-')
@@ -338,7 +347,6 @@ def parse_pdf_bill_findings(uid_list, date_time=""):
     for i in file_list_list:
         file_list.pop(i)
 
-
     print("=====file_list", file_list)
     for key in file_list.keys():
         order_uid = str(key).split("\\")[-1].split("_")
@@ -394,6 +402,9 @@ def parse_pdf_bill_findings(uid_list, date_time=""):
             problem_uid.append(item)
             continue
         a_data = a[list(a.keys())[0]]
+        # print("=====pdf_json", len(a_data['pdf_json']), a_data['pdf_json'])
+        # print("=====bill_json", len(a_data['bill_json']), a_data['bill_json'])
+        # print("=====sea_amount", len(a_data['sea_amount']), a_data['sea_amount'])
         if len(a_data['pdf_json']) != len(a_data['bill_json']) or len(a_data['pdf_json']) != len(a_data['sea_amount']) or len(a_data['bill_json']) != len(a_data['sea_amount']):
             item = {"problem_parse_pdf_bill": email_uid}
             problem_uid.append(item)
@@ -409,7 +420,7 @@ def filter_error_email(uid_list, problem_uid):
         for key in pro_uid.keys():
             uid = pro_uid[key]
             problem_uid_int.append(uid)
-    print("============problem_uid", problem_uid)
+    # print("=========problem_uid", problem_uid)
     # 在下载附件的uid 移除有问题的uid
     index_list = []
     for rig_uid in enumerate(uid_list):
@@ -419,11 +430,10 @@ def filter_error_email(uid_list, problem_uid):
                 index_list.append(int(rig_uid[0]))
                 # index_list.insert(0, rig_uid[0])
                 index_list.sort(reverse=True)
-    print("==========uid_list before pop", uid_list)
+    print("=========uid_list before pop", uid_list)
     if len(index_list) != 0:
         for index in index_list:
             uid_list.pop(index)
-    print(uid_list, "=======uid_list after pop")
     return uid_list  # 正确的uid 错误的uid
 
 
@@ -443,7 +453,7 @@ def process_correct_message(uid_list):
                     continue
                 processed_uid.append(uid)
                 mailbox.move(mailbox.uids()[mail_index], file_name)
-        print("本次处理邮件的邮件id:", processed_uid)
+        print("ID of all messages moved:", processed_uid)
         return processed_uid
 
 
@@ -545,13 +555,79 @@ def mkdir_file(filename):
         # d.close()
     return file_path
 
+
 def add_redis(sending_succeeded_uid):
     for i in sending_succeeded_uid:
         add("email:uid"+i, 1, -1)  # 添加redis
 
 
+def classify_files(validity: list, invalidity: list):
+    validity_uid = list_dict_list(validity)
+    invalidity_uid = list_dict_list(invalidity)
+    g = os.walk(excel_storage_location + '\\' + datetime.datetime.now().strftime("%Y-%m-%d"))
+    validity_email = []
+    invalidity_email = []
+    for path, dir_list, file_list in g:
+        for file_name in file_list:
+            absolute_path = os.path.join(path, file_name)
+            uid = re.findall(r'(?<=_)\d+(?=\.)', absolute_path)[0]
+            if uid in validity_uid:
+                validity_email.append(absolute_path)
+            elif uid in invalidity_uid:
+                invalidity_email.append(absolute_path)
+
+    excel_path = os.path.join(excel_storage_location, datetime.datetime.now().strftime("%Y-%m-%d"))
+    for dir1 in os.listdir(excel_path):  # file folder  all will be printed out
+        cur_path = os.path.join(excel_path, dir1)  # full path
+        if os.path.isdir(cur_path):
+            continue
+
+        new_file_path = ''
+        if cur_path in validity_email:
+            new_file_path_previous = os.path.join(excel_path, 'validity')
+            new_file_path = os.path.join(new_file_path_previous, dir1)
+        elif cur_path in invalidity_email:
+            new_file_path_previous = os.path.join(excel_path, 'invalidity')
+            new_file_path = os.path.join(new_file_path_previous, dir1)
+        else:
+            continue
+        if not os.path.exists(new_file_path_previous):
+            os.makedirs(new_file_path_previous)
+        if os.path.isdir(cur_path):  # is folder return true   is file return false  cur_path will not destroy the original folder  dir cut the previous folder directly
+            if not os.path.exists(new_file_path):
+                os.mkdir(new_file_path)
+        else:
+            # with open(cur_path, 'rb') as f:
+            #     data = f.read()
+            #     os.remove(cur_path)
+            #     # f.close()
+            # with open(new_file_path, 'wb') as d:  # if not a file will be created if any it will cover the content
+            #     d.write(data)
+            if os.path.exists(new_file_path):
+                os.remove(new_file_path)
+            os.rename(cur_path, new_file_path)
 
 
+def absolute_path_pdf(time_date=datetime.datetime.now().strftime('%Y-%m-%d')):
+    a = traverse_folder(time_date)
+    absolute_path = []
+    for i in a.keys():
+        path = str(a[i][0])
+        ch_index = path.rfind("\\")
+        file_path = path[0:ch_index]
+        file_name = path[ch_index+1:]
+        item = [file_path, file_name]
+        absolute_path.append(item)
+    return absolute_path
+
+
+
+
+
+
+
+def aa():
+    print("can enter")
 
 
 
