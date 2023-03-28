@@ -27,8 +27,12 @@ def filter_message(attachment, send: str, file_code: str):
         file_path = pdf_storage_location + "\\" + send + "\\" + date_time + "\\" + file_code
         if not os.path.exists(file_path):
             os.makedirs(file_path)
+        duty_attr = []
+        length = len(attachment)
+        judge_digit = False
         for a in attachment:  # <class "imap_tools.message.MailAttachment">
-            if ("Duty" in a.filename) or ("Clearance" in a.filename):
+            length -= 1
+            if "Clearance" in a.filename:
                 att_data = a.payload
                 filename = a.filename.replace("\r\n", '')
                 pdf_path = os.path.join(file_path, filename)
@@ -37,6 +41,17 @@ def filter_message(attachment, send: str, file_code: str):
                 result = f.write(att_data)
                 f.close()
                 break
+            elif "Duty" in a.filename:
+                judge_digit = True
+                att_data = a.payload
+                filename = a.filename.replace("\r\n", '')
+                duty_attr.append([att_data, filename])
+            if length == 0 and judge_digit is True:
+                filename = duty_attr[0][1].replace("\r\n", '')
+                pdf_path = os.path.join(file_path, filename)
+                f = open(pdf_path, "wb")
+                result = f.write(duty_attr[0][0])
+                f.close()
         return file_path
     elif send == "DGF":
         file_path = pdf_storage_location + "\\" + send + "\\" + date_time + "\\" + file_code
@@ -168,12 +183,13 @@ def number_bill_request(hbl, number):  # hbl提单号 number集装箱号  传什
     return res
 
 
-def parse_pdf_bill(pdf_json, bill_json, filename):  # folder\filer user filer parse pdf then obtain pdf_json and finally get bill_json
+def parse_pdf_bill(pdf_json, bill_json,
+                   filename):  # folder\filer user filer parse pdf then obtain pdf_json and finally get bill_json
     pdf_bill_json = {filename: {
         'pdf_json': [],
         'bill_json': [],
         'sea_amount': []
-        }
+    }
     }
     pdf_list_all = []
     # eya货柜单清关预览
@@ -241,10 +257,13 @@ def parse_pdf_bill(pdf_json, bill_json, filename):  # folder\filer user filer pa
                 pdf_li.append(item['table'][table_index]['total'] if ('total' in item['table'][table_index]) else '')
             elif 'TRANSPORTKOSTEN' == key:
                 pdf_li.append(item['table'][table_index]['total'] if ('total' in item['table'][table_index]) else '')
-                pdf_li.append(item['table'][table_index]['quantity'] if ('quantity' in item['table'][table_index]) else '')
-                pdf_li.append(item['table'][table_index]['currency'] if ('currency' in item['table'][table_index]) else '')
+                pdf_li.append(
+                    item['table'][table_index]['quantity'] if ('quantity' in item['table'][table_index]) else '')
+                pdf_li.append(
+                    item['table'][table_index]['currency'] if ('currency' in item['table'][table_index]) else '')
             elif 'VERSICHERUNGSKOSTEN' == key:
-                pdf_li.append(item['table'][table_index]['total'] if ('total' in item['table'][table_index]) else '')  # AG
+                pdf_li.append(
+                    item['table'][table_index]['total'] if ('total' in item['table'][table_index]) else '')  # AG
 
         pdf_li.append(item['zollwert'] if ('zollwert' in item) else '')
         pdf_li.append(item['zolleAufIndustrieprodukteSummary'] if ('zolleAufIndustrieprodukteSummary' in item) else '')
@@ -284,7 +303,8 @@ def parse_pdf_bill(pdf_json, bill_json, filename):  # folder\filer user filer pa
         bill_list.append(item['ladingTitleTypeName'] if ('ladingTitleTypeName' in item) else '')
         bill_list.append(item['partsBoxNumber'] if ('partsBoxNumber' in item) else '')
         bill_list.append(item['totalTaxrate'] if ('totalTaxrate' in item) else '')
-        bill_list.append(item['predictTaxAmount'] if ('predictTaxAmount' in item) else '')  # partsBoxNumber predictTaxAmount 没有
+        bill_list.append(
+            item['predictTaxAmount'] if ('predictTaxAmount' in item) else '')  # partsBoxNumber predictTaxAmount 没有
 
         sea_list = [item['seaFreightAmount'] if ('seaFreightAmount' in item) else '']
 
@@ -309,9 +329,11 @@ def start(start_time=""):
         count = 0
         uid_subject = dict()  # message id and message subject
         for msg in mailbox.fetch(criteria, charset="utf-8"):
-            print('接收到邮件：'+msg.uid)
+            print('接收到邮件：' + msg.uid)
             sender = msg.from_
-            uid = msg.uid
+            uid = msg.uid  # <class str>
+            # if uid != '12645':
+            #     continue
             redis_uid = "email:uid" + uid
             # exist = exists(redis_uid)  # 从redis判断
             # if exist:
@@ -410,18 +432,21 @@ def parse_pdf_bill_findings(uid_list, date_time=""):
         try:
             if res_bill is None:
                 item = {"problem_bill_request": email_uid}  # 提单号请求失败
-                print("=========error of extract hbl's list: hbl and container_number is ", order_code, container_number)
+                print("=========error of extract hbl's list: hbl and container_number is ", order_code,
+                      container_number)
                 problem_uid.append(item)
                 continue
             if "data" not in res_bill.json():
                 item = {"problem_bill_request": email_uid}  # 提单号请求失败
-                print("=========error of extract hbl's list: hbl and container_number is ", order_code, container_number)
+                print("=========error of extract hbl's list: hbl and container_number is ", order_code,
+                      container_number)
                 problem_uid.append(item)
                 continue
             bill_json = res_bill.json()["data"]
             if "containerNumber" not in bill_json[0]:  # 判断是否拿到订单的详情数据
                 item = {"problem_bill_request": email_uid}  # 提单号 请求失败
-                print("=========error of extract hbl's list: hbl and container_number is ", order_code, container_number)
+                print("=========error of extract hbl's list: hbl and container_number is ", order_code,
+                      container_number)
                 problem_uid.append(item)
                 continue
         except:
@@ -437,7 +462,8 @@ def parse_pdf_bill_findings(uid_list, date_time=""):
             # print("=========pdf_json(dict) the result of parsing pdf", pdf_json)
             # print("=========bill_json(dict) the result of query bill", bill_json)
             item = {"problem_parse_pdf_bill": email_uid}
-            print("error of parsing pdf or extract hbl's list: pdf file and hbl_container is ", key, order_code, container_number)
+            print("error of parsing pdf or extract hbl's list: pdf file and hbl_container is ", key, order_code,
+                  container_number)
             problem_uid.append(item)
             continue
         pdf_bill_data.append(a)  #
@@ -630,7 +656,7 @@ def mkdir_file(filename):
 
 def add_redis(sending_succeeded_uid):
     for i in sending_succeeded_uid:
-        add("email:uid"+i, 1, -1)  # 添加redis
+        add("email:uid" + i, 1, -1)  # 添加redis
 
 
 def classify_files(validity: list, invalidity: list):
@@ -649,6 +675,8 @@ def classify_files(validity: list, invalidity: list):
                 invalidity_email.append(absolute_path)
 
     excel_path = os.path.join(excel_storage_location, datetime.datetime.now().strftime("%Y-%m-%d"))
+    if not os.path.exists(excel_path):
+        os.makedirs(excel_path)
     for dir1 in os.listdir(excel_path):  # file folder  all will be printed out
         cur_path = os.path.join(excel_path, dir1)  # full path
         if os.path.isdir(cur_path):
@@ -699,10 +727,12 @@ def absolute_path_pdf(time_date="", uid_list=[], problem_uid=[]):  # return file
     absolute_path = []
     # print("=========absolute_path_pdf a", a)
     for i in a.keys():
+        if not a[i]:
+            continue
         path = str(a[i][0])
         ch_index = path.rfind("\\")
         file_path = path[0:ch_index]
-        file_name = path[ch_index+1:]
+        file_name = path[ch_index + 1:]
         item = [file_path, file_name]
         absolute_path.append(item)
     print("=========file_path_and_name(list)  a collection of paths and names of all files", absolute_path)
@@ -711,8 +741,5 @@ def absolute_path_pdf(time_date="", uid_list=[], problem_uid=[]):  # return file
 
 def aa():
     print("can enter")
-
-
-
 
 # start()
